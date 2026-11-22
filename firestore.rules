@@ -1,0 +1,966 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidSha256(id) {
+      return id is string && id.size() == 64 && id.matches('^[a-f0-9]{64}$');
+    }
+
+    function isValidLongId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 193 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(uid) {
+      return isVerifiedUser() && request.auth.uid == uid;
+    }
+
+    function principalDocExists() {
+      return exists(/databases/$(database)/documents/systemConfig/principal);
+    }
+
+    function isPrincipal() {
+      return isVerifiedUser()
+        && principalDocExists()
+        && get(/databases/$(database)/documents/systemConfig/principal).data.principalUid == request.auth.uid;
+    }
+
+    function isBootstrapOwnerEmail() {
+      return isVerifiedUser()
+        && request.auth.token.email is string
+        && request.auth.token.email == 'collegeeaman2@gmail.com';
+    }
+
+    function userDocExists(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isActiveUser() {
+      return isVerifiedUser()
+        && userDocExists(request.auth.uid)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+
+    function currentUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isStaffUser() {
+      return isActiveUser() && currentUserRole() in ['officer', 'teacher'];
+    }
+
+    function hasModuleAction(moduleName, actionName) {
+      return isActiveUser()
+        && exists(/databases/$(database)/documents/permissions/$(request.auth.uid))
+        && get(/databases/$(database)/documents/permissions/$(request.auth.uid)).data.modules.get(moduleName, {
+          'view': false,
+          'create': false,
+          'edit': false,
+          'delete': false,
+          'approve': false
+        })[actionName] == true;
+    }
+
+    function isVerifiedParentOf(studentId) {
+      return isActiveUser()
+        && currentUserRole() == 'parent'
+        && exists(/databases/$(database)/documents/parentChildLinks/$(request.auth.uid + '_' + studentId))
+        && get(/databases/$(database)/documents/parentChildLinks/$(request.auth.uid + '_' + studentId)).data.status == 'verified'
+        && hasModuleAction('studentRecords', 'view');
+    }
+
+    function isValidLogoOrAssetDataUrl(val) {
+      return val is string
+        && val.size() <= 450000
+        && (
+          val == ''
+          || val == '/assets/aistudio/1781688019967_907a1671.png'
+          || val.matches('^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$')
+        );
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidPublicSystemStatus(data) {
+      return data.keys().hasAll(['principalConfigured', 'collegeCode', 'initializedAt'])
+        && data.keys().hasOnly(['principalConfigured', 'collegeCode', 'initializedAt'])
+        && data.principalConfigured is bool
+        && data.principalConfigured == true
+        && data.collegeCode is string
+        && data.collegeCode.size() >= 2 && data.collegeCode.size() <= 32
+        && data.collegeCode.matches('^[A-Z0-9\\-]+$')
+        && data.initializedAt == request.time;
+    }
+
+    function isValidPrincipalConfig(data) {
+      return data.keys().hasAll(['principalUid', 'initializedAt'])
+        && data.keys().hasOnly(['principalUid', 'initializedAt'])
+        && isValidId(data.principalUid)
+        && data.principalUid == request.auth.uid
+        && data.initializedAt == request.time;
+    }
+
+    function isValidUserAccount(data) {
+      return data.keys().hasAll([
+          'uid', 'fullName', 'email', 'phone', 'role', 'status',
+          'preferredLanguage', 'department', 'referenceCode', 'inviteId', 'approvedBy',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'phone', 'role', 'status',
+          'preferredLanguage', 'department', 'referenceCode', 'inviteId', 'approvedBy',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.phone is string && data.phone.size() <= 32
+        && data.role in ['principal', 'officer', 'teacher', 'parent']
+        && data.status in ['pending', 'active', 'suspended', 'revoked', 'rejected']
+        && data.preferredLanguage in ['en', 'ta', 'ar']
+        && data.department is string && data.department.size() <= 100
+        && data.referenceCode is string && data.referenceCode.size() <= 64
+        && data.inviteId is string && data.inviteId.size() <= 64
+        && data.approvedBy is string && data.approvedBy.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidActionSet(m) {
+      return m is map
+        && m.keys().hasAll(['view', 'create', 'edit', 'delete', 'approve'])
+        && m.keys().hasOnly(['view', 'create', 'edit', 'delete', 'approve'])
+        && m.view is bool
+        && m.create is bool
+        && m.edit is bool
+        && m.delete is bool
+        && m.approve is bool;
+    }
+
+    function isReadOnlyActionSet(m) {
+      return isValidActionSet(m)
+        && m.create == false
+        && m.edit == false
+        && m.delete == false
+        && m.approve == false;
+    }
+
+    function isValidModulesMap(modules, role) {
+      return modules is map
+        && modules.keys().hasAll([
+          'userManagement', 'permissionsGovernance', 'parentVerification',
+          'auditCompliance', 'studentRecords', 'academicOverview'
+        ])
+        && modules.keys().hasOnly([
+          'userManagement', 'permissionsGovernance', 'parentVerification',
+          'auditCompliance', 'studentRecords', 'academicOverview', 'collegeProfile'
+        ])
+        && (
+          role == 'parent' ? (
+            isReadOnlyActionSet(modules.userManagement)
+            && isReadOnlyActionSet(modules.permissionsGovernance)
+            && isReadOnlyActionSet(modules.parentVerification)
+            && isReadOnlyActionSet(modules.auditCompliance)
+            && isReadOnlyActionSet(modules.studentRecords)
+            && isReadOnlyActionSet(modules.academicOverview)
+            && (!('collegeProfile' in modules) || isReadOnlyActionSet(modules.collegeProfile))
+          ) : (
+            isValidActionSet(modules.userManagement)
+            && isValidActionSet(modules.permissionsGovernance)
+            && isValidActionSet(modules.parentVerification)
+            && isValidActionSet(modules.auditCompliance)
+            && isValidActionSet(modules.studentRecords)
+            && isValidActionSet(modules.academicOverview)
+            && (!('collegeProfile' in modules) || isValidActionSet(modules.collegeProfile))
+          )
+        );
+    }
+
+    function isValidPreApprovedInvite(data, inviteId) {
+      return data.keys().hasAll([
+          'inviteId', 'email', 'fullName', 'phone', 'role', 'department',
+          'referenceCode', 'modules', 'status', 'createdBy', 'claimedByUid',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'inviteId', 'email', 'fullName', 'phone', 'role', 'department',
+          'referenceCode', 'modules', 'status', 'createdBy', 'claimedByUid',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidSha256(data.inviteId)
+        && data.inviteId == inviteId
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.phone is string && data.phone.size() <= 32
+        && data.role in ['officer', 'teacher', 'parent']
+        && data.department is string && data.department.size() <= 100
+        && data.referenceCode is string && data.referenceCode.size() <= 64
+        && isValidModulesMap(data.modules, data.role)
+        && data.status in ['invited', 'claimed', 'revoked']
+        && isValidId(data.createdBy)
+        && data.claimedByUid is string && data.claimedByUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAccountRequest(data) {
+      return data.keys().hasAll([
+          'requesterUid', 'fullName', 'email', 'phone', 'requestedRole',
+          'department', 'justification', 'studentReferenceCode', 'studentNameClaim',
+          'status', 'reviewedBy', 'reviewNote', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'requesterUid', 'fullName', 'email', 'phone', 'requestedRole',
+          'department', 'justification', 'studentReferenceCode', 'studentNameClaim',
+          'status', 'reviewedBy', 'reviewNote', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.requesterUid)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.phone is string && data.phone.size() <= 32
+        && data.requestedRole in ['officer', 'teacher', 'parent']
+        && data.department is string && data.department.size() <= 100
+        && data.justification is string && data.justification.size() >= 5 && data.justification.size() <= 500
+        && data.studentReferenceCode is string && data.studentReferenceCode.size() <= 64
+        && data.studentNameClaim is string && data.studentNameClaim.size() <= 120
+        && data.status in ['pending', 'approved', 'rejected']
+        && data.reviewedBy is string && data.reviewedBy.size() <= 128
+        && data.reviewNote is string && data.reviewNote.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPermissionProfile(data, targetUserId) {
+      return data.keys().hasAll(['userId', 'role', 'modules', 'updatedBy', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'role', 'modules', 'updatedBy', 'updatedAt'])
+        && isValidId(data.userId)
+        && data.userId == targetUserId
+        && data.role in ['principal', 'officer', 'teacher', 'parent']
+        && isValidModulesMap(data.modules, data.role)
+        && isValidId(data.updatedBy)
+        && data.updatedAt == request.time;
+    }
+
+    function isValidPublicCollegeIdentity(data) {
+      return data.keys().hasAll([
+          'nameEn', 'nameTa', 'nameAr', 'shortName', 'establishedYear', 'logoUrl', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'nameEn', 'nameTa', 'nameAr', 'shortName', 'establishedYear', 'logoUrl', 'updatedAt'
+        ])
+        && data.nameEn is string && data.nameEn.size() >= 2 && data.nameEn.size() <= 160
+        && data.nameTa is string && data.nameTa.size() >= 2 && data.nameTa.size() <= 160
+        && data.nameAr is string && data.nameAr.size() >= 2 && data.nameAr.size() <= 160
+        && data.shortName is string && data.shortName.size() <= 32
+        && data.establishedYear is int && data.establishedYear >= 1800 && data.establishedYear <= 2100
+        && isValidLogoOrAssetDataUrl(data.logoUrl)
+        && data.updatedAt == request.time;
+    }
+
+    function isValidCollegeProfile(data) {
+      return data.keys().hasAll([
+          'nameEn', 'nameTa', 'nameAr', 'shortName', 'establishedYear',
+          'addressEn', 'addressTa', 'addressAr', 'city', 'district', 'province', 'country', 'postalCode',
+          'telephone', 'alternateTelephone', 'email', 'website', 'registrationNumber',
+          'introductionEn', 'introductionTa', 'introductionAr',
+          'visionEn', 'visionTa', 'visionAr',
+          'missionEn', 'missionTa', 'missionAr',
+          'principalStaffId', 'version', 'lastRevisionId',
+          'createdBy', 'updatedBy', 'updatedByEmail', 'updatedByName', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'nameEn', 'nameTa', 'nameAr', 'shortName', 'establishedYear',
+          'addressEn', 'addressTa', 'addressAr', 'city', 'district', 'province', 'country', 'postalCode',
+          'telephone', 'alternateTelephone', 'email', 'website', 'registrationNumber',
+          'introductionEn', 'introductionTa', 'introductionAr',
+          'visionEn', 'visionTa', 'visionAr',
+          'missionEn', 'missionTa', 'missionAr',
+          'principalStaffId', 'version', 'lastRevisionId',
+          'createdBy', 'updatedBy', 'updatedByEmail', 'updatedByName', 'createdAt', 'updatedAt'
+        ])
+        && data.nameEn is string && data.nameEn.size() >= 2 && data.nameEn.size() <= 160
+        && data.nameTa is string && data.nameTa.size() >= 2 && data.nameTa.size() <= 160
+        && data.nameAr is string && data.nameAr.size() >= 2 && data.nameAr.size() <= 160
+        && data.shortName is string && data.shortName.size() <= 32
+        && data.establishedYear is int && data.establishedYear >= 1800 && data.establishedYear <= 2100
+        && data.addressEn is string && data.addressEn.size() <= 300
+        && data.addressTa is string && data.addressTa.size() <= 300
+        && data.addressAr is string && data.addressAr.size() <= 300
+        && data.city is string && data.city.size() <= 100
+        && data.district is string && data.district.size() <= 100
+        && data.province is string && data.province.size() <= 100
+        && data.country is string && data.country.size() <= 100
+        && data.postalCode is string && data.postalCode.size() <= 24
+        && data.telephone is string && data.telephone.size() <= 32
+        && data.alternateTelephone is string && data.alternateTelephone.size() <= 32
+        && data.email is string && data.email.size() <= 160
+        && data.website is string && data.website.size() <= 200
+        && data.registrationNumber is string && data.registrationNumber.size() <= 100
+        && data.introductionEn is string && data.introductionEn.size() <= 1500
+        && data.introductionTa is string && data.introductionTa.size() <= 1500
+        && data.introductionAr is string && data.introductionAr.size() <= 1500
+        && data.visionEn is string && data.visionEn.size() <= 1000
+        && data.visionTa is string && data.visionTa.size() <= 1000
+        && data.visionAr is string && data.visionAr.size() <= 1000
+        && data.missionEn is string && data.missionEn.size() <= 1000
+        && data.missionTa is string && data.missionTa.size() <= 1000
+        && data.missionAr is string && data.missionAr.size() <= 1000
+        && data.principalStaffId is string && data.principalStaffId.size() <= 128
+        && data.version is int && data.version >= 1
+        && isValidId(data.lastRevisionId)
+        && isValidId(data.createdBy)
+        && isValidId(data.updatedBy)
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160
+        && data.updatedByEmail == request.auth.token.email
+        && data.updatedByName is string && data.updatedByName.size() >= 2 && data.updatedByName.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCollegeAsset(data, assetType) {
+      return data.keys().hasAll([
+          'assetType', 'dataUrl', 'fileName', 'mimeType', 'width', 'height',
+          'sizeBytes', 'version', 'lastRevisionId', 'updatedBy', 'updatedByEmail', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'assetType', 'dataUrl', 'fileName', 'mimeType', 'width', 'height',
+          'sizeBytes', 'version', 'lastRevisionId', 'updatedBy', 'updatedByEmail', 'updatedAt'
+        ])
+        && data.assetType in ['logo', 'seal', 'signature']
+        && data.assetType == assetType
+        && isValidLogoOrAssetDataUrl(data.dataUrl)
+        && data.fileName is string && data.fileName.size() <= 160
+        && data.mimeType is string && data.mimeType.size() <= 64
+        && data.width is int && data.width >= 0 && data.width <= 10000
+        && data.height is int && data.height >= 0 && data.height <= 10000
+        && data.sizeBytes is int && data.sizeBytes >= 0 && data.sizeBytes <= 450000
+        && data.version is int && data.version >= 1
+        && isValidId(data.lastRevisionId)
+        && isValidId(data.updatedBy)
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 3 && data.updatedByEmail.size() <= 160
+        && data.updatedByEmail == request.auth.token.email
+        && data.updatedAt == request.time;
+    }
+
+    function isValidCollegeProfileRevision(data, revisionId) {
+      return data.keys().hasAll([
+          'revisionId', 'targetType', 'version', 'reason', 'changedFields',
+          'previousSnapshot', 'newSnapshot', 'actorUid', 'actorEmail', 'actorName', 'actorRole', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'revisionId', 'targetType', 'version', 'reason', 'changedFields',
+          'previousSnapshot', 'newSnapshot', 'actorUid', 'actorEmail', 'actorName', 'actorRole', 'createdAt'
+        ])
+        && isValidId(data.revisionId)
+        && data.revisionId == revisionId
+        && data.targetType in ['profile', 'asset_logo', 'asset_seal', 'asset_signature']
+        && data.version is int && data.version >= 1
+        && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 400
+        && data.changedFields is list && data.changedFields.size() <= 40
+        && data.previousSnapshot is map && data.previousSnapshot.size() <= 50
+        && data.newSnapshot is map && data.newSnapshot.size() <= 50
+        && isValidId(data.actorUid)
+        && data.actorUid == request.auth.uid
+        && data.actorEmail is string && data.actorEmail.size() >= 3 && data.actorEmail.size() <= 160
+        && data.actorEmail == request.auth.token.email
+        && data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 120
+        && data.actorRole in ['principal', 'officer', 'teacher']
+        && data.createdAt == request.time;
+    }
+
+    function isValidDemoStudent(data, sid) {
+      return data.keys().hasAll([
+          'studentId', 'fullName', 'programLevel', 'enrollmentStatus',
+          'guardianHint', 'isDemoData', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'studentId', 'fullName', 'programLevel', 'enrollmentStatus',
+          'guardianHint', 'isDemoData', 'createdAt'
+        ])
+        && isValidId(data.studentId)
+        && data.studentId == sid
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.programLevel is string && data.programLevel.size() >= 2 && data.programLevel.size() <= 80
+        && data.enrollmentStatus in ['enrolled', 'leave', 'graduated']
+        && data.guardianHint is string && data.guardianHint.size() <= 120
+        && data.isDemoData is bool && data.isDemoData == true
+        && data.createdAt is timestamp;
+    }
+
+    function isValidParentChildLink(data, linkId) {
+      return data.keys().hasAll([
+          'linkId', 'parentUid', 'studentId', 'studentName', 'relationship',
+          'verificationCodeHash', 'status', 'verifiedBy', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'linkId', 'parentUid', 'studentId', 'studentName', 'relationship',
+          'verificationCodeHash', 'status', 'verifiedBy', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && isValidLongId(data.linkId)
+        && data.linkId == linkId
+        && isValidId(data.parentUid)
+        && isValidId(data.studentId)
+        && data.linkId == (data.parentUid + '_' + data.studentId)
+        && data.studentName is string && data.studentName.size() >= 2 && data.studentName.size() <= 120
+        && data.relationship in ['mother', 'father', 'legal_guardian']
+        && data.verificationCodeHash is string && data.verificationCodeHash.size() >= 1 && data.verificationCodeHash.size() <= 256
+        && data.status in ['pending', 'verified', 'rejected', 'revoked']
+        && data.verifiedBy is string && data.verifiedBy.size() <= 128
+        && data.notes is string && data.notes.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+          'actorUid', 'actorEmail', 'actorRole', 'action',
+          'targetUid', 'targetResource', 'summary', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'actorUid', 'actorEmail', 'actorRole', 'action',
+          'targetUid', 'targetResource', 'summary', 'createdAt'
+        ])
+        && isValidId(data.actorUid)
+        && data.actorUid == request.auth.uid
+        && data.actorEmail is string && data.actorEmail.size() >= 3 && data.actorEmail.size() <= 160
+        && data.actorEmail == request.auth.token.email
+        && data.actorRole in ['principal', 'officer', 'teacher', 'parent', 'applicant']
+        && data.action in [
+          'principal_initialized',
+          'account_requested',
+          'account_approved',
+          'account_rejected',
+          'account_suspended',
+          'account_reactivated',
+          'account_revoked',
+          'account_created_by_principal',
+          'invite_claimed',
+          'permissions_updated',
+          'role_updated',
+          'parent_link_requested',
+          'parent_link_verified',
+          'parent_link_revoked',
+          'login_recorded',
+          'college_profile_updated',
+          'college_asset_updated'
+        ]
+        && data.targetUid is string && data.targetUid.size() <= 128
+        && data.targetResource is string && data.targetResource.size() >= 1 && data.targetResource.size() <= 160
+        && data.summary is string && data.summary.size() >= 2 && data.summary.size() <= 400
+        && data.createdAt == request.time;
+    }
+
+    // 4. Collection Match Blocks
+
+    // Singleton public status (no PII)
+    match /systemConfig/publicStatus {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isBootstrapOwnerEmail()
+        && !principalDocExists()
+        && isValidPublicSystemStatus(incoming())
+        && existsAfter(/databases/$(database)/documents/systemConfig/principal);
+      allow update, delete: if false;
+    }
+
+    // Singleton Principal lock
+    match /systemConfig/principal {
+      allow get: if isVerifiedUser();
+      allow list: if false;
+      allow create: if isBootstrapOwnerEmail()
+        && !principalDocExists()
+        && isValidPrincipalConfig(incoming())
+        && existsAfter(/databases/$(database)/documents/systemConfig/publicStatus)
+        && existsAfter(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update, delete: if false;
+    }
+
+    // Public non-sensitive College Identity (for login screen and app headers)
+    match /collegeProfile/publicIdentity {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isPrincipal()
+        && isValidPublicCollegeIdentity(incoming())
+        && existsAfter(/databases/$(database)/documents/collegeProfile/official);
+      allow update: if isValidPublicCollegeIdentity(incoming())
+        && (
+          isPrincipal()
+          || (isStaffUser() && hasModuleAction('collegeProfile', 'edit'))
+        )
+        && (
+          existsAfter(/databases/$(database)/documents/collegeProfile/official)
+          || (isPrincipal() && existsAfter(/databases/$(database)/documents/collegeAssets/logo))
+        );
+      allow delete: if false;
+    }
+
+    // Central authoritative College Profile document
+    match /collegeProfile/official {
+      allow get: if isActiveUser();
+      allow list: if false;
+      allow create: if isPrincipal()
+        && isValidCollegeProfile(incoming())
+        && incoming().version == 1
+        && incoming().createdBy == request.auth.uid
+        && incoming().updatedBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/collegeProfile/publicIdentity)
+        && existsAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId))
+        && getAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId)).data.version == incoming().version
+        && getAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId)).data.actorUid == request.auth.uid;
+
+      allow update: if (
+          isPrincipal()
+          || (isStaffUser() && hasModuleAction('collegeProfile', 'edit'))
+        )
+        && isValidCollegeProfile(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().createdBy == existing().createdBy
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time
+        && incoming().version == existing().version + 1
+        && (isPrincipal() || incoming().principalStaffId == existing().principalStaffId)
+        && existsAfter(/databases/$(database)/documents/collegeProfile/publicIdentity)
+        && existsAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId))
+        && getAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId)).data.version == incoming().version
+        && getAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId)).data.actorUid == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    // Separate official institutional assets (logo, seal, signature) - Principal-only write
+    match /collegeAssets/{assetType} {
+      allow get: if assetType in ['logo', 'seal', 'signature']
+        && (assetType == 'logo' || isPrincipal() || isStaffUser());
+      allow list: if isPrincipal() || isStaffUser();
+
+      allow create: if assetType in ['logo', 'seal', 'signature']
+        && isPrincipal()
+        && isValidCollegeAsset(incoming(), assetType)
+        && incoming().version == 1
+        && incoming().updatedBy == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId))
+        && getAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId)).data.actorUid == request.auth.uid
+        && (assetType != 'logo' || existsAfter(/databases/$(database)/documents/collegeProfile/publicIdentity));
+
+      allow update: if assetType in ['logo', 'seal', 'signature']
+        && isPrincipal()
+        && isValidCollegeAsset(incoming(), assetType)
+        && incoming().assetType == existing().assetType
+        && incoming().version == existing().version + 1
+        && incoming().updatedBy == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId))
+        && getAfter(/databases/$(database)/documents/collegeProfileRevisions/$(incoming().lastRevisionId)).data.actorUid == request.auth.uid
+        && (assetType != 'logo' || existsAfter(/databases/$(database)/documents/collegeProfile/publicIdentity));
+
+      allow delete: if false;
+    }
+
+    // Immutable College Profile & Asset revision history
+    match /collegeProfileRevisions/{revisionId} {
+      allow get: if isValidId(revisionId) && (isPrincipal() || isStaffUser());
+      allow list: if isPrincipal() || isStaffUser();
+      allow create: if isValidId(revisionId)
+        && isValidCollegeProfileRevision(incoming(), revisionId)
+        && (
+          (isPrincipal() && incoming().actorRole == 'principal')
+          || (
+            isStaffUser()
+            && hasModuleAction('collegeProfile', 'edit')
+            && incoming().targetType == 'profile'
+            && incoming().actorRole in ['officer', 'teacher']
+          )
+        );
+      allow update, delete: if false;
+    }
+
+    // User accounts (PII strictly restricted to owner, Principal, or permitted active staff)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (
+        isOwner(userId)
+        || isPrincipal()
+        || (isStaffUser() && hasModuleAction('userManagement', 'view'))
+      );
+      allow list: if isPrincipal()
+        || (isVerifiedUser() && resource.data.uid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('userManagement', 'view'));
+
+      allow create: if isValidId(userId)
+        && isValidUserAccount(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          // One-time Principal bootstrap
+          (
+            isBootstrapOwnerEmail()
+            && !principalDocExists()
+            && userId == request.auth.uid
+            && incoming().uid == request.auth.uid
+            && incoming().email == request.auth.token.email
+            && incoming().role == 'principal'
+            && incoming().status == 'active'
+            && incoming().inviteId == ''
+            && incoming().approvedBy == request.auth.uid
+            && existsAfter(/databases/$(database)/documents/systemConfig/principal)
+          )
+          ||
+          // Self-registration (strictly pending, non-principal)
+          (
+            isOwner(userId)
+            && principalDocExists()
+            && incoming().uid == request.auth.uid
+            && incoming().email == request.auth.token.email
+            && incoming().role in ['officer', 'teacher', 'parent']
+            && incoming().status == 'pending'
+            && incoming().inviteId == ''
+            && incoming().approvedBy == ''
+          )
+          ||
+          // Claiming a Principal-created Pre-Approved Invite atomically
+          (
+            isOwner(userId)
+            && principalDocExists()
+            && incoming().uid == request.auth.uid
+            && incoming().email == request.auth.token.email
+            && isValidSha256(incoming().inviteId)
+            && exists(/databases/$(database)/documents/preApprovedInvites/$(incoming().inviteId))
+            && get(/databases/$(database)/documents/preApprovedInvites/$(incoming().inviteId)).data.status == 'invited'
+            && get(/databases/$(database)/documents/preApprovedInvites/$(incoming().inviteId)).data.email == request.auth.token.email
+            && incoming().role == get(/databases/$(database)/documents/preApprovedInvites/$(incoming().inviteId)).data.role
+            && incoming().status == 'active'
+            && incoming().approvedBy == get(/databases/$(database)/documents/preApprovedInvites/$(incoming().inviteId)).data.createdBy
+            && getAfter(/databases/$(database)/documents/preApprovedInvites/$(incoming().inviteId)).data.status == 'claimed'
+            && existsAfter(/databases/$(database)/documents/permissions/$(userId))
+          )
+          ||
+          // Principal creating user record directly
+          (
+            isPrincipal()
+            && incoming().uid == userId
+            && incoming().role in ['officer', 'teacher', 'parent']
+            && incoming().status in ['pending', 'active']
+            && incoming().inviteId == ''
+            && incoming().approvedBy == request.auth.uid
+          )
+        );
+
+      allow update: if isValidId(userId)
+        && isValidUserAccount(incoming())
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().inviteId == existing().inviteId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Owner can update personal profile & language only
+          (
+            isOwner(userId)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'preferredLanguage', 'updatedAt'])
+          )
+          ||
+          // Principal can update lifecycle status, role (cannot demote self), department, referenceCode
+          (
+            isPrincipal()
+            && (userId != request.auth.uid || (incoming().role == 'principal' && incoming().status == 'active'))
+            && (userId == request.auth.uid || incoming().role in ['officer', 'teacher', 'parent'])
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'fullName', 'phone', 'role', 'status', 'preferredLanguage',
+              'department', 'referenceCode', 'approvedBy', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // Principal-created pre-approved account invitations
+    match /preApprovedInvites/{inviteId} {
+      allow get: if isValidSha256(inviteId) && (
+        isPrincipal()
+        || (isVerifiedUser() && existing().email == request.auth.token.email)
+      );
+      allow list: if isPrincipal() || (isVerifiedUser() && resource.data.email == request.auth.token.email);
+
+      allow create: if isValidSha256(inviteId)
+        && isPrincipal()
+        && isValidPreApprovedInvite(incoming(), inviteId)
+        && incoming().status == 'invited'
+        && incoming().createdBy == request.auth.uid
+        && incoming().claimedByUid == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidSha256(inviteId)
+        && isValidPreApprovedInvite(incoming(), inviteId)
+        && incoming().inviteId == existing().inviteId
+        && incoming().email == existing().email
+        && incoming().createdBy == existing().createdBy
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isPrincipal()
+            && existing().status == 'invited'
+            && incoming().status == 'revoked'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+          ||
+          (
+            isVerifiedUser()
+            && existing().status == 'invited'
+            && existing().email == request.auth.token.email
+            && incoming().status == 'claimed'
+            && incoming().claimedByUid == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedByUid', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // Account requests awaiting Principal review
+    match /accountRequests/{requestId} {
+      allow get: if isValidId(requestId) && (
+        isPrincipal()
+        || (isVerifiedUser() && existing().requesterUid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('userManagement', 'view'))
+      );
+      allow list: if isPrincipal()
+        || (isVerifiedUser() && resource.data.requesterUid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('userManagement', 'view'));
+
+      allow create: if isValidId(requestId)
+        && isVerifiedUser()
+        && principalDocExists()
+        && isValidAccountRequest(incoming())
+        && incoming().requesterUid == request.auth.uid
+        && incoming().email == request.auth.token.email
+        && incoming().status == 'pending'
+        && incoming().reviewedBy == ''
+        && incoming().reviewNote == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(requestId)
+        && isPrincipal()
+        && isValidAccountRequest(incoming())
+        && existing().status == 'pending'
+        && incoming().requesterUid == existing().requesterUid
+        && incoming().email == existing().email
+        && incoming().requestedRole == existing().requestedRole
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().reviewedBy == request.auth.uid
+        && incoming().status in ['approved', 'rejected']
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewNote', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // Explicit module-level and action-level permission profiles
+    match /permissions/{userId} {
+      allow get: if isValidId(userId) && (
+        isPrincipal()
+        || isOwner(userId)
+        || (isStaffUser() && hasModuleAction('permissionsGovernance', 'view'))
+      );
+      allow list: if isPrincipal()
+        || (isVerifiedUser() && resource.data.userId == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('permissionsGovernance', 'view'));
+
+      allow create: if isValidId(userId)
+        && isValidPermissionProfile(incoming(), userId)
+        && existsAfter(/databases/$(database)/documents/users/$(userId))
+        && (
+          (
+            isPrincipal()
+            && incoming().updatedBy == request.auth.uid
+          )
+          ||
+          (
+            isBootstrapOwnerEmail()
+            && !principalDocExists()
+            && userId == request.auth.uid
+            && incoming().role == 'principal'
+            && incoming().updatedBy == request.auth.uid
+            && existsAfter(/databases/$(database)/documents/systemConfig/principal)
+          )
+          ||
+          (
+            isOwner(userId)
+            && existsAfter(/databases/$(database)/documents/users/$(userId))
+            && isValidSha256(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId)
+            && exists(/databases/$(database)/documents/preApprovedInvites/$(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId))
+            && get(/databases/$(database)/documents/preApprovedInvites/$(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId)).data.email == request.auth.token.email
+            && get(/databases/$(database)/documents/preApprovedInvites/$(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId)).data.status == 'invited'
+            && incoming().role == get(/databases/$(database)/documents/preApprovedInvites/$(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId)).data.role
+            && incoming().modules == get(/databases/$(database)/documents/preApprovedInvites/$(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId)).data.modules
+            && incoming().updatedBy == get(/databases/$(database)/documents/preApprovedInvites/$(getAfter(/databases/$(database)/documents/users/$(userId)).data.inviteId)).data.createdBy
+          )
+        );
+
+      allow update: if isValidId(userId)
+        && isPrincipal()
+        && isValidPermissionProfile(incoming(), userId)
+        && incoming().updatedBy == request.auth.uid
+        && (userId != request.auth.uid || incoming().role == 'principal')
+        && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'modules', 'updatedBy', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // Synthetic demo students (dev only)
+    match /demoStudents/{studentId} {
+      allow get: if isValidId(studentId)
+        && (
+          isPrincipal()
+          || isVerifiedParentOf(studentId)
+          || (isStaffUser() && hasModuleAction('studentRecords', 'view'))
+        );
+      allow list: if isPrincipal()
+        || (isStaffUser() && resource.data.isDemoData == true && hasModuleAction('studentRecords', 'view'));
+
+      allow create: if isValidId(studentId)
+        && isPrincipal()
+        && isValidDemoStudent(incoming(), studentId)
+        && incoming().createdAt == request.time;
+
+      allow update: if isValidId(studentId)
+        && isPrincipal()
+        && isValidDemoStudent(incoming(), studentId)
+        && incoming().studentId == existing().studentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'programLevel', 'enrollmentStatus', 'guardianHint']);
+
+      allow delete: if isValidId(studentId) && isPrincipal();
+    }
+
+    // Parent-Child verification links
+    match /parentChildLinks/{linkId} {
+      allow get: if isValidLongId(linkId) && (
+        isPrincipal()
+        || (isVerifiedUser() && existing().parentUid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('parentVerification', 'view'))
+      );
+      allow list: if isPrincipal()
+        || (isVerifiedUser() && resource.data.parentUid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('parentVerification', 'view'));
+
+      allow create: if isValidLongId(linkId)
+        && isValidParentChildLink(incoming(), linkId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/demoStudents/$(incoming().studentId))
+        && (
+          (
+            isVerifiedUser()
+            && incoming().parentUid == request.auth.uid
+            && incoming().status == 'pending'
+            && incoming().verifiedBy == ''
+          )
+          ||
+          (
+            isPrincipal()
+            && incoming().status in ['pending', 'verified']
+            && (incoming().status == 'pending' || incoming().verifiedBy == request.auth.uid)
+          )
+        );
+
+      allow update: if isValidLongId(linkId)
+        && isValidParentChildLink(incoming(), linkId)
+        && incoming().linkId == existing().linkId
+        && incoming().parentUid == existing().parentUid
+        && incoming().studentId == existing().studentId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().verifiedBy == request.auth.uid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'verifiedBy', 'notes', 'verificationCodeHash', 'updatedAt'])
+        && (
+          isPrincipal()
+          || (isStaffUser() && hasModuleAction('parentVerification', 'approve'))
+        );
+
+      allow delete: if isValidLongId(linkId) && isPrincipal();
+    }
+
+    // Immutable audit logs
+    match /auditLogs/{logId} {
+      allow get: if isValidId(logId) && (
+        isPrincipal()
+        || (isVerifiedUser() && existing().actorUid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('auditCompliance', 'view'))
+      );
+      allow list: if isPrincipal()
+        || (isVerifiedUser() && resource.data.actorUid == request.auth.uid)
+        || (isStaffUser() && hasModuleAction('auditCompliance', 'view'));
+
+      allow create: if isValidId(logId)
+        && isVerifiedUser()
+        && isValidAuditLog(incoming())
+        && (
+          isPrincipal()
+          ||
+          (
+            isBootstrapOwnerEmail()
+            && !principalDocExists()
+            && incoming().action == 'principal_initialized'
+            && incoming().actorRole == 'principal'
+            && existsAfter(/databases/$(database)/documents/systemConfig/principal)
+          )
+          ||
+          (
+            isStaffUser()
+            && hasModuleAction('userManagement', 'approve')
+            && incoming().action in ['account_approved', 'account_rejected']
+            && incoming().actorRole in ['officer', 'teacher']
+          )
+          ||
+          (
+            isStaffUser()
+            && hasModuleAction('parentVerification', 'approve')
+            && incoming().action in ['parent_link_verified', 'parent_link_revoked']
+            && incoming().actorRole in ['officer', 'teacher']
+          )
+          ||
+          (
+            isStaffUser()
+            && hasModuleAction('collegeProfile', 'edit')
+            && incoming().action == 'college_profile_updated'
+            && incoming().actorRole in ['officer', 'teacher']
+          )
+          ||
+          (
+            incoming().action in ['account_requested', 'parent_link_requested', 'login_recorded', 'invite_claimed']
+            && incoming().actorRole != 'principal'
+          )
+        );
+
+      allow update, delete: if false;
+    }
+  }
+}

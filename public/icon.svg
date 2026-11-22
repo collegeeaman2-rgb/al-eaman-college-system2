@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Al EAMAN Muslim Ladies Arabic College">
+  <defs>
+    <linearGradient id="navyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#153E75" />
+      <stop offset="100%" stop-color="#102F5B" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#navyGrad)" />
+  <rect x="76" y="76" width="360" height="360" rx="56" fill="none" stroke="#D6B66B" stroke-width="10" stroke-opacity="0.88" />
+  <rect x="116" y="116" width="280" height="280" rx="36" transform="rotate(45 256 256)" fill="none" stroke="#D7E5F5" stroke-width="6" stroke-opacity="0.45" />
+  <circle cx="256" cy="256" r="118" fill="#153E75" stroke="#2878D0" stroke-width="6" />
+  <text x="256" y="252" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-family="Georgia, 'Times New Roman', serif" font-size="112" font-weight="700" letter-spacing="-2">AE</text>
+  <rect x="196" y="314" width="120" height="4" rx="2" fill="#D6B66B" />
+</svg>

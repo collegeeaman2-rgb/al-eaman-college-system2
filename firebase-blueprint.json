@@ -1,0 +1,746 @@
+{
+  "entities": {
+    "PublicSystemStatus": {
+      "title": "PublicSystemStatus",
+      "description": "Non-sensitive initialization flag indicating whether the single Principal account has completed one-time setup.",
+      "type": "object",
+      "properties": {
+        "principalConfigured": {
+          "type": "boolean",
+          "description": "True once the one-time Principal setup has completed."
+        },
+        "collegeCode": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "initializedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["principalConfigured", "collegeCode", "initializedAt"]
+    },
+    "PrincipalConfig": {
+      "title": "PrincipalConfig",
+      "description": "Singleton governance record locking the single primary Principal UID.",
+      "type": "object",
+      "properties": {
+        "principalUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "initializedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["principalUid", "initializedAt"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "College user account record with strict role and lifecycle status.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "role": {
+          "type": "string",
+          "enum": ["principal", "officer", "teacher", "parent"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "active", "suspended", "revoked", "rejected"]
+        },
+        "preferredLanguage": {
+          "type": "string",
+          "enum": ["en", "ta", "ar"]
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "referenceCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "inviteId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "approvedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "email",
+        "phone",
+        "role",
+        "status",
+        "preferredLanguage",
+        "department",
+        "referenceCode",
+        "inviteId",
+        "approvedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PreApprovedInvite": {
+      "title": "PreApprovedInvite",
+      "description": "Principal-created pre-approved account invitation keyed by SHA-256 hex of lowercase email.",
+      "type": "object",
+      "properties": {
+        "inviteId": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "role": {
+          "type": "string",
+          "enum": ["officer", "teacher", "parent"]
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "referenceCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "modules": {
+          "type": "object"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["invited", "claimed", "revoked"]
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "claimedByUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "inviteId",
+        "email",
+        "fullName",
+        "phone",
+        "role",
+        "department",
+        "referenceCode",
+        "modules",
+        "status",
+        "createdBy",
+        "claimedByUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AccountRequest": {
+      "title": "AccountRequest",
+      "description": "Pending, approved, or rejected account request submitted by an Officer, Teacher, or Parent.",
+      "type": "object",
+      "properties": {
+        "requesterUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "requestedRole": {
+          "type": "string",
+          "enum": ["officer", "teacher", "parent"]
+        },
+        "department": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 500
+        },
+        "studentReferenceCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "studentNameClaim": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"]
+        },
+        "reviewedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "reviewNote": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "requesterUid",
+        "fullName",
+        "email",
+        "phone",
+        "requestedRole",
+        "department",
+        "justification",
+        "studentReferenceCode",
+        "studentNameClaim",
+        "status",
+        "reviewedBy",
+        "reviewNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PermissionProfile": {
+      "title": "PermissionProfile",
+      "description": "Explicit module-level and action-level permissions (view, create, edit, delete, approve) managed solely by the Principal.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["principal", "officer", "teacher", "parent"]
+        },
+        "modules": {
+          "type": "object",
+          "description": "Action matrix for userManagement, permissionsGovernance, parentVerification, auditCompliance, studentRecords, academicOverview, and optional collegeProfile."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "role", "modules", "updatedBy", "updatedAt"]
+    },
+    "PublicCollegeIdentity": {
+      "title": "PublicCollegeIdentity",
+      "description": "Non-sensitive official college identity used by login screen, application headers, and public welcome display.",
+      "type": "object",
+      "properties": {
+        "nameEn": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "nameTa": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "nameAr": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "shortName": { "type": "string", "maxLength": 32 },
+        "establishedYear": { "type": "integer", "minimum": 1800, "maximum": 2100 },
+        "logoUrl": { "type": "string", "maxLength": 450000 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nameEn", "nameTa", "nameAr", "shortName", "establishedYear", "logoUrl", "updatedAt"]
+    },
+    "CollegeProfile": {
+      "title": "CollegeProfile",
+      "description": "Central authoritative Phase 1 institutional College Profile for Al EAMAN Muslim Ladies Arabic College.",
+      "type": "object",
+      "properties": {
+        "nameEn": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "nameTa": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "nameAr": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "shortName": { "type": "string", "maxLength": 32 },
+        "establishedYear": { "type": "integer", "minimum": 1800, "maximum": 2100 },
+        "addressEn": { "type": "string", "maxLength": 300 },
+        "addressTa": { "type": "string", "maxLength": 300 },
+        "addressAr": { "type": "string", "maxLength": 300 },
+        "city": { "type": "string", "maxLength": 100 },
+        "district": { "type": "string", "maxLength": 100 },
+        "province": { "type": "string", "maxLength": 100 },
+        "country": { "type": "string", "maxLength": 100 },
+        "postalCode": { "type": "string", "maxLength": 24 },
+        "telephone": { "type": "string", "maxLength": 32 },
+        "alternateTelephone": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 160 },
+        "website": { "type": "string", "maxLength": 200 },
+        "registrationNumber": { "type": "string", "maxLength": 100 },
+        "introductionEn": { "type": "string", "maxLength": 1500 },
+        "introductionTa": { "type": "string", "maxLength": 1500 },
+        "introductionAr": { "type": "string", "maxLength": 1500 },
+        "visionEn": { "type": "string", "maxLength": 1000 },
+        "visionTa": { "type": "string", "maxLength": 1000 },
+        "visionAr": { "type": "string", "maxLength": 1000 },
+        "missionEn": { "type": "string", "maxLength": 1000 },
+        "missionTa": { "type": "string", "maxLength": 1000 },
+        "missionAr": { "type": "string", "maxLength": 1000 },
+        "principalStaffId": { "type": "string", "maxLength": 128 },
+        "version": { "type": "integer", "minimum": 1 },
+        "lastRevisionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedByEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "updatedByName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "nameEn",
+        "nameTa",
+        "nameAr",
+        "shortName",
+        "establishedYear",
+        "addressEn",
+        "addressTa",
+        "addressAr",
+        "city",
+        "district",
+        "province",
+        "country",
+        "postalCode",
+        "telephone",
+        "alternateTelephone",
+        "email",
+        "website",
+        "registrationNumber",
+        "introductionEn",
+        "introductionTa",
+        "introductionAr",
+        "visionEn",
+        "visionTa",
+        "visionAr",
+        "missionEn",
+        "missionTa",
+        "missionAr",
+        "principalStaffId",
+        "version",
+        "lastRevisionId",
+        "createdBy",
+        "updatedBy",
+        "updatedByEmail",
+        "updatedByName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CollegeAsset": {
+      "title": "CollegeAsset",
+      "description": "Separate official institutional asset (logo, seal, or signature) managed exclusively by the Principal.",
+      "type": "object",
+      "properties": {
+        "assetType": { "type": "string", "enum": ["logo", "seal", "signature"] },
+        "dataUrl": { "type": "string", "maxLength": 450000 },
+        "fileName": { "type": "string", "maxLength": 160 },
+        "mimeType": { "type": "string", "maxLength": 64 },
+        "width": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "height": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "sizeBytes": { "type": "integer", "minimum": 0, "maximum": 450000 },
+        "version": { "type": "integer", "minimum": 1 },
+        "lastRevisionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "updatedByEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "assetType",
+        "dataUrl",
+        "fileName",
+        "mimeType",
+        "width",
+        "height",
+        "sizeBytes",
+        "version",
+        "lastRevisionId",
+        "updatedBy",
+        "updatedByEmail",
+        "updatedAt"
+      ]
+    },
+    "CollegeProfileRevision": {
+      "title": "CollegeProfileRevision",
+      "description": "Immutable revision history entry preserving previous and updated institutional profile or asset values.",
+      "type": "object",
+      "properties": {
+        "revisionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "targetType": {
+          "type": "string",
+          "enum": ["profile", "asset_logo", "asset_seal", "asset_signature"]
+        },
+        "version": { "type": "integer", "minimum": 1 },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "changedFields": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 64 }
+        },
+        "previousSnapshot": { "type": "object" },
+        "newSnapshot": { "type": "object" },
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "actorEmail": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "actorName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "actorRole": { "type": "string", "enum": ["principal", "officer", "teacher"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "revisionId",
+        "targetType",
+        "version",
+        "reason",
+        "changedFields",
+        "previousSnapshot",
+        "newSnapshot",
+        "actorUid",
+        "actorEmail",
+        "actorName",
+        "actorRole",
+        "createdAt"
+      ]
+    },
+    "DemoStudent": {
+      "title": "DemoStudent",
+      "description": "Synthetic development-only demo student record for verifying parent-child access boundaries in Phase 1.",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "programLevel": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "enrollmentStatus": {
+          "type": "string",
+          "enum": ["enrolled", "leave", "graduated"]
+        },
+        "guardianHint": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "isDemoData": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "studentId",
+        "fullName",
+        "programLevel",
+        "enrollmentStatus",
+        "guardianHint",
+        "isDemoData",
+        "createdAt"
+      ]
+    },
+    "ParentChildLink": {
+      "title": "ParentChildLink",
+      "description": "Verified relationship linking a Parent UID to a specific studentId.",
+      "type": "object",
+      "properties": {
+        "linkId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 193,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "parentUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studentId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "studentName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "relationship": {
+          "type": "string",
+          "enum": ["mother", "father", "legal_guardian"]
+        },
+        "verificationCodeHash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "verified", "rejected", "revoked"]
+        },
+        "verifiedBy": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "linkId",
+        "parentUid",
+        "studentId",
+        "studentName",
+        "relationship",
+        "verificationCodeHash",
+        "status",
+        "verifiedBy",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable append-only administrative and security audit log.",
+      "type": "object",
+      "properties": {
+        "actorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorEmail": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "actorRole": {
+          "type": "string",
+          "enum": ["principal", "officer", "teacher", "parent", "applicant"]
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "principal_initialized",
+            "account_requested",
+            "account_approved",
+            "account_rejected",
+            "account_suspended",
+            "account_reactivated",
+            "account_revoked",
+            "account_created_by_principal",
+            "invite_claimed",
+            "permissions_updated",
+            "role_updated",
+            "parent_link_requested",
+            "parent_link_verified",
+            "parent_link_revoked",
+            "login_recorded",
+            "college_profile_updated",
+            "college_asset_updated"
+          ]
+        },
+        "targetUid": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "targetResource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 400
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "actorUid",
+        "actorEmail",
+        "actorRole",
+        "action",
+        "targetUid",
+        "targetResource",
+        "summary",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/systemConfig/publicStatus": {
+      "schema": { "$ref": "#/entities/PublicSystemStatus" },
+      "description": "Singleton public initialization status flag with zero PII."
+    },
+    "/systemConfig/principal": {
+      "schema": { "$ref": "#/entities/PrincipalConfig" },
+      "description": "Singleton Principal lock document."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "User accounts indexed by Firebase Auth UID."
+    },
+    "/preApprovedInvites/{inviteId}": {
+      "schema": { "$ref": "#/entities/PreApprovedInvite" },
+      "description": "Principal-created pre-approved account invitations keyed by email SHA-256."
+    },
+    "/accountRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/AccountRequest" },
+      "description": "Account registration requests awaiting Principal review."
+    },
+    "/permissions/{userId}": {
+      "schema": { "$ref": "#/entities/PermissionProfile" },
+      "description": "Module and action permission matrix per user."
+    },
+    "/collegeProfile/publicIdentity": {
+      "schema": { "$ref": "#/entities/PublicCollegeIdentity" },
+      "description": "Public non-sensitive institutional name, year, and logo for login screen and headers."
+    },
+    "/collegeProfile/official": {
+      "schema": { "$ref": "#/entities/CollegeProfile" },
+      "description": "Authoritative central College Profile record for Al EAMAN Muslim Ladies Arabic College."
+    },
+    "/collegeAssets/{assetType}": {
+      "schema": { "$ref": "#/entities/CollegeAsset" },
+      "description": "Separate official institutional assets (logo, seal, signature) writable only by the Principal."
+    },
+    "/collegeProfileRevisions/{revisionId}": {
+      "schema": { "$ref": "#/entities/CollegeProfileRevision" },
+      "description": "Immutable revision history preserving every official College Profile and asset change."
+    },
+    "/demoStudents/{studentId}": {
+      "schema": { "$ref": "#/entities/DemoStudent" },
+      "description": "Development-only synthetic student records for parent-child verification."
+    },
+    "/parentChildLinks/{linkId}": {
+      "schema": { "$ref": "#/entities/ParentChildLink" },
+      "description": "Parent-child verification records keyed as {parentUid}_{studentId}."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable append-only security and governance audit trail."
+    }
+  }
+}

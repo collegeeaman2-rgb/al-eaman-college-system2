@@ -1,0 +1,6 @@
+{
+  "name": "Al EAMAN Muslim Ladies Arabic College Management System",
+  "description": "Phase 1 Login and User Management portal for Al EAMAN Muslim Ladies Arabic College featuring role-based governance, Principal approval workflows, parent-child verification, and multilingual English, Tamil, and Arabic (RTL) support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
